@@ -19,7 +19,8 @@ from adapter_lib import *
 import pdb
 import ray
 from psutil import cpu_count
-ray.init(num_cpus=cpu_count())
+from multiprocessing import Process
+#ray.init(num_cpus=cpu_count())
 ############################Config###########################################
 # path to waymo dataset "folder" (all .tfrecord files in that folder will
 # be converted)
@@ -42,7 +43,7 @@ LIDAR_PATH = KITTI_PATH + '/velodyne'
 IMG_CALIB_PATH = KITTI_PATH + '/img_calib'
 ###############################################################################
 
-@ray.remote
+#@ray.remote
 class Adapter:
 
     def __init__(self):
@@ -53,7 +54,8 @@ class Adapter:
         self.__file_names = []
         self.T_front_cam_to_ref = []
         self.T_vehicle_to_front_cam = []
-    #@ray.remote
+
+    @ray.remote
     def cvt(self, args, folder, start_ind):
         """ convert dataset from Waymo to KITTI
         Args:
@@ -65,11 +67,11 @@ class Adapter:
 
         self.create_folder(args.camera_type)
 
-        bar = progressbar.ProgressBar(maxval=len(self.__file_names) + 1,
-                                      widgets=[progressbar.Percentage(), ' ',
-                                               progressbar.Bar(
-                                                   marker='>', left='[', right=']'), ' ',
-                                               progressbar.ETA()])
+        #    bar = progressbar.ProgressBar(maxval=len(self.__file_names) + 1,
+#                                      widgets=[progressbar.Percentage(), ' ',
+#                                               progressbar.Bar(
+#                                                   marker='>', left='[', right=']'), ' ',
+#                                               progressbar.ETA()])
 
         #tf.enable_eager_execution()
         file_num = 1
@@ -77,7 +79,7 @@ class Adapter:
         frame_name = self.start_ind
         label_exists = False
         print("start converting ...")
-        bar.start()
+        #bar.start()
         for file_idx, file_name in enumerate(self.__file_names):
             print('File {}/{}'.format(file_idx, len(self.__file_names)))
             dataset = tf.data.TFRecordDataset(file_name, compression_type='')
@@ -109,11 +111,11 @@ class Adapter:
                     frame_name += 1
 
                 frame_num += 1
-            bar.update(file_num)
+         #   bar.update(file_num)
             file_num += 1
-        bar.finish()
-        print("\nfinished ...")
-        return frame_name
+          #  bar.finish()
+            print("\nfinished ...")
+           # return frame_name
 
     def save_image(self, frame, frame_num, cam_type):
         """ parse and save the images in png format
@@ -384,10 +386,10 @@ class Adapter:
         fp_image_calib.write(calib_context)
         fp_image_calib.close()
 
-    def get_file_names(self, folder):
-        for i in os.listdir(folder):
-            if i.split('.')[-1] == 'tfrecord':
-                self.__file_names.append(folder + '/' + i)
+        def get_file_names(self, folder):
+            for i in os.listdir(folder):
+                if i.split('.')[-1] == 'tfrecord':
+                    self.__file_names.append(folder + '/' + i)
 
     def cart_to_homo(self, mat):
         ret = np.eye(4)
@@ -651,7 +653,6 @@ class Adapter:
 
         plt.scatter(xs, ys, c=colors, s=point_size, edgecolors="none")
 
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='Save Waymo dataset into Kitti format')
@@ -673,14 +674,28 @@ if __name__ == '__main__':
                         help='if true, does not save any ground truth data')
     args = parser.parse_args()
     start_ind = args.start_ind
+    print(start_ind)
     path, dirs, files = next(os.walk(DATA_PATH))
     dirs.sort()
     # init ray
-    #ray.init(num_cpus=cpu_count())
+    ray.init(num_cpus=cpu_count())
     print(dirs)
-    for directory in dirs:
-        adapter = Adapter.remote()
-        last_ind = adapter.cvt.remote(args, directory, start_ind)
-        print(last_ind)
-        start_ind = last_ind
-       # _ = ray.get(adapter)
+    i = 0
+    adapters = [Adapter() for i in range(len(dirs))]
+    
+# Process the items in parallel.
+    results = ray.get([adapters[idx].cvt.remote(args, directory, 0) for idx, directory in enumerate(dirs)])
+#    dir_length = len(dirs)
+#    while i < dir_length:
+#        adapter[i] = Adapter()
+#        last_ind = adapter[i].cvt.remote(args, dirs[i], start_ind)
+#        start_ind = last_ind
+#        _ = ray.get(last_ind)
+#        i += 1
+#    for idx, directory in enumerate(dirs):
+#        adapter[idx] = Adapter.remote()
+#        adapters[idx].cvt(args, directory, 0)
+        #print(last_ind)
+        #start_ind = last_ind
+        #_ = ray.get(last_ind)
+
